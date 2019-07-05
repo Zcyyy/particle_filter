@@ -163,9 +163,9 @@ void ParticleFilter<StateType>::normalize() {
     }
     // only normalize if weightSum is big enough to devide
     if (weightSum > m_NumParticles * std::numeric_limits<double>::epsilon()) {
+       //  ROS_WARN_STREAM("weight okay");
         double factor = 1.0 / weightSum;
-        for (iter = m_CurrentList.begin(); iter != m_CurrentList.end();
-                ++iter) {
+        for (iter = m_CurrentList.begin(); iter != m_CurrentList.end(); ++iter) {
             double newWeight = (*iter)->getWeight() * factor;
             (*iter)->setWeight(newWeight);
         }
@@ -174,8 +174,7 @@ void ParticleFilter<StateType>::normalize() {
         // *very* small!" << std::endl;
         ROS_WARN_STREAM(
                 "The particle weights got extremely small. \nResetting them all to .8");
-        for (iter = m_CurrentList.begin(); iter != m_CurrentList.end();
-                ++iter) {
+        for (iter = m_CurrentList.begin(); iter != m_CurrentList.end(); ++iter) {
             (*iter)->setWeight(.8);
         }
     }
@@ -200,7 +199,10 @@ void ParticleFilter<StateType>::drift(geometry_msgs::Vector3 linear,
 
 template <class StateType>
 void ParticleFilter<StateType>::diffuse() {
+
 #pragma parallel for
+    m_NumParticles = 100;
+        //ROS_INFO_STREAM("NUM particles: " << m_NumParticles);
     for (unsigned int i = 0; i < m_NumParticles; i++) {
         m_MovementModel->diffuse(m_CurrentList[i]->m_State);
     }
@@ -235,7 +237,8 @@ void ParticleFilter<StateType>::measure() {
         } else {
             weight += m_ObservationModel->measure(m_CurrentList[i]->getState());
         }
-        m_CurrentList[i]->setWeight(weight);
+
+        m_CurrentList[i]->setWeight(weight + m_CurrentList[i]->getWeight()); //for resampling interval: + m_CurrentList[i]->getWeight()
     }
     // after measurement we have to re-sort and normalize the particles
     sort();
@@ -295,6 +298,51 @@ ParticleFilter<StateType>::getBestXPercentEstimate(float percentage) const {
 }
 
 template <class StateType>
+std::vector<double> ParticleFilter<StateType>::getCovariance(float percentage) const{
+    StateType mean = getBestXPercentEstimate(percentage);
+
+    float xMean = mean.getXPos();
+    float yMean = mean.getYPos();
+    float thetaMean = mean.getTheta();
+
+    float xI = m_CurrentList[0]->getState().getXPos();
+    float yI = m_CurrentList[0]->getState().getYPos();
+    float thetaI = m_CurrentList[0]->getState().getTheta();
+
+    for (unsigned int i = 1; i < m_NumParticles; i++){
+        xI += m_CurrentList[i]->getState().getXPos();
+        yI += m_CurrentList[i]->getState().getYPos();
+        thetaI += m_CurrentList[i]->getState().getTheta();
+    }
+
+    float xIMean = xI - (m_NumParticles * xMean);
+    float yIMean = yI - ( m_NumParticles * yMean);
+    float thetaIMean = thetaI - (m_NumParticles * thetaMean);
+
+    float pos0 = (xIMean * xIMean) / m_NumParticles;
+    float pos1 = (xIMean * yIMean) / m_NumParticles;
+    float pos5 = (xIMean * thetaIMean) / m_NumParticles;
+    //float pos6 = (yIMean * xIMean) / m_NumParticles; == pos1
+    float pos7 = (yIMean * yIMean) / m_NumParticles;
+    float pos11 = (yIMean * thetaIMean) / m_NumParticles;
+    //float pos30 = (thetaIMean * xIMean) / m_NumParticles; == pos2
+    //float pos31 = (thetaIMean * yIMean) / m_NumParticles; ==pos11
+    float pos36 = (thetaIMean * thetaIMean) / m_NumParticles;
+
+    std::vector<double> covariance = {pos0, pos1, 0, 0, 0, pos5,
+                           pos1, pos7, 0, 0, 0, pos11, //pos1 == pos6
+                           0, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 0, 0,
+                           pos1, pos11, 0, 0, 0, pos36}; // pos30 == pos1 and pos31 == pos 11
+
+    // xx, xy, xt,
+    // yx, yy, yt,
+    // tx, ty, tt,
+    return covariance;
+}
+
+template <class StateType>
 typename ParticleFilter<StateType>::ConstParticleIterator
 ParticleFilter<StateType>::particleListBegin() {
     return m_CurrentList.begin();
@@ -325,6 +373,8 @@ ParticleFilter<StateType>::renderMarkerArray(std::string n_space,
     visualization_msgs::MarkerArray marker_array;
 
     for (unsigned int i = 0; i < m_NumParticles; i++) {
+        double weight = m_CurrentList[i]->getWeight();
+        color.r = weight / getMaxParticleWeight();
         marker_array.markers.push_back(m_CurrentList[i]->getState().renderMarker(
                 n_space, frame, lifetime, color));
     }

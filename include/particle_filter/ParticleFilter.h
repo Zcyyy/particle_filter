@@ -345,6 +345,15 @@ public:
     StateType getBestXPercentEstimate(float x) const;
 
     /**
+   * calculate covariance matrix for x% best percentage
+     *   * @param x percentage of particles to use. Has to be positive and greater
+     *        than zero.
+   * @return covariance matrix
+   *
+   */
+    std::vector<double> getCovariance(float x) const;
+
+    /**
      * This method selects a new set of particles out of an old set according to
      * their weight (importance resampling). The particles from the list
      * m_CurrentList points to are used as source, m_LastList points to the
