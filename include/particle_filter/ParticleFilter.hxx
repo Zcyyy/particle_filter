@@ -199,10 +199,7 @@ void ParticleFilter<StateType>::drift(geometry_msgs::Vector3 linear,
 
 template <class StateType>
 void ParticleFilter<StateType>::diffuse() {
-
 #pragma parallel for
-    m_NumParticles = 100;
-        //ROS_INFO_STREAM("NUM particles: " << m_NumParticles);
     for (unsigned int i = 0; i < m_NumParticles; i++) {
         m_MovementModel->diffuse(m_CurrentList[i]->m_State);
     }
